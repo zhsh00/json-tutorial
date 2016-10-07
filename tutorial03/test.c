@@ -107,10 +107,19 @@ static void test_parse_number() {
 static void test_parse_string() {
     TEST_STRING("", "\"\"");
     TEST_STRING("Hello", "\"Hello\"");
-#if 0
+#if 1
     TEST_STRING("Hello\nWorld", "\"Hello\\nWorld\"");
-    TEST_STRING("\" \\ / \b \f \n \r \t", "\"\\\" \\\\ \\/ \\b \\f \\n \\r \\t\"");
+    TEST_STRING("\"\\/\b\f\n\r\t", "\"\\\"\\\\/\\b\\f\\n\\r\\t\"");
 #endif
+	TEST_STRING("\x20", "\"\x20\"");
+	TEST_STRING("\x21", "\"\x21\"");
+	//TEST_STRING("\x22", "\"\x22\"");// 程序会直接崩溃
+	TEST_STRING("\x22", "\"\\\x22\"");
+	TEST_STRING("\x23", "\"\x23\"");
+	TEST_STRING("\x5b", "\"\x5b\"");
+	//TEST_STRING("\x5c", "\"\x5c\"");// 程序会直接崩溃
+	TEST_STRING("\x5c", "\"\\\x5c\"");
+	TEST_STRING("\x5d", "\"\x5d\"");
 }
 
 #define TEST_ERROR(error, json)\
@@ -163,7 +172,7 @@ static void test_parse_missing_quotation_mark() {
 }
 
 static void test_parse_invalid_string_escape() {
-#if 0
+#if 1
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE, "\"\\v\"");
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE, "\"\\'\"");
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE, "\"\\0\"");
@@ -172,7 +181,7 @@ static void test_parse_invalid_string_escape() {
 }
 
 static void test_parse_invalid_string_char() {
-#if 0
+#if 1
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_CHAR, "\"\x01\"");
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_CHAR, "\"\x1F\"");
 #endif
@@ -188,12 +197,34 @@ static void test_access_null() {
 }
 
 static void test_access_boolean() {
-    /* \TODO */
     /* Use EXPECT_TRUE() and EXPECT_FALSE() */
+	lept_value v;
+	lept_init(&v);
+	lept_set_boolean(&v, 1);
+	EXPECT_EQ_INT(LEPT_TRUE, lept_get_type(&v));
+	EXPECT_TRUE(lept_get_boolean(&v));
+	lept_set_boolean(&v, 0);
+	EXPECT_EQ_INT(LEPT_FALSE, lept_get_type(&v));
+	EXPECT_FALSE(lept_get_boolean(&v));
+	lept_set_boolean(&v, -1);
+	EXPECT_EQ_INT(LEPT_TRUE, lept_get_type(&v));
+	EXPECT_TRUE(lept_get_boolean(&v));
+	lept_free(&v);
 }
 
 static void test_access_number() {
-    /* \TODO */
+	lept_value v;
+	lept_init(&v);
+	lept_set_number(&v, 0);
+	EXPECT_EQ_INT(LEPT_NUMBER, lept_get_type(&v));
+	EXPECT_EQ_DOUBLE((double)0, lept_get_number(&v));
+	lept_set_number(&v, 1);
+	EXPECT_EQ_INT(LEPT_NUMBER, lept_get_type(&v));
+	EXPECT_EQ_DOUBLE((double)1, lept_get_number(&v));//为什么会相等呢？double怎么判断相等？这里1改成0的话，可以看到测试输出的1的浮点并不是1
+	lept_set_number(&v, -1.0);
+	EXPECT_EQ_INT(LEPT_NUMBER, lept_get_type(&v));
+	EXPECT_EQ_DOUBLE(-1.0, lept_get_number(&v));
+	lept_free(&v);
 }
 
 static void test_access_string() {

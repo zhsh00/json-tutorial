@@ -17,6 +17,8 @@
 #define ISDIGIT(ch)         ((ch) >= '0' && (ch) <= '9')
 #define ISDIGIT1TO9(ch)     ((ch) >= '1' && (ch) <= '9')
 #define PUTC(c, ch)         do { *(char*)lept_context_push(c, sizeof(char)) = (ch); } while(0)
+#define ISDIGITHEX(ch)      (((ch) >= 'A' && (ch) <= 'F') || ((ch) >= 'a' && (ch) <= 'f'))
+#define ISDIGITHEX2(ch)      ((ch) >= 'A' && (ch) <= 'F')
 
 typedef struct {
     const char* json;
@@ -91,12 +93,51 @@ static int lept_parse_number(lept_context* c, lept_value* v) {
 }
 
 static const char* lept_parse_hex4(const char* p, unsigned* u) {
-    /* \TODO */
-    return p;
+	char ch;
+	int count = 12;
+	*u = 0;// sizeof(char);
+	do {
+		ch = *p++;
+		if (ISDIGIT(ch))
+			*u |= (ch - 48) << count;
+		else if (ISDIGITHEX2(ch = ch & 0xDF))
+			*u |= (ch - 55) << count;/* 'A'=65，代表10，A-55=10。 */
+		else {
+			p--;//我目前先-1吧，比如"等要留着
+			return 0;
+		}
+		count -= 4;
+	} while (count >= 0);
+	return p;
 }
 
+typedef char byte;
+static void outPutByte(byte b) {
+//	PUTC(, (char)b);
+//	*(char*)lept_context_push(c, sizeof(char)) = (ch)
+}
+#define OUT_PUT_BYTE(b) PUTC(c, b)
+
 static void lept_encode_utf8(lept_context* c, unsigned u) {
-    /* \TODO */
+	assert(u >= 0 && u <= 0x10FFFF);
+	if (u <= 0x7F) {
+		OUT_PUT_BYTE((byte)u);
+	}
+	else if (u <= 0x7FF) {
+		OUT_PUT_BYTE((byte)(0xC0 | ((u >> 6) & 0x1F)));
+		OUT_PUT_BYTE((byte)(0x80 | (u        & 0x3F)));
+	}
+	else if (u <= 0xFFFF) {
+		OUT_PUT_BYTE((byte)(0xE0 | ((u >> 12) & 0x0F)));
+		OUT_PUT_BYTE((byte)(0x80 | ((u >> 6)  & 0x3F)));
+		OUT_PUT_BYTE((byte)(0x80 | (u         & 0x3F)));
+	}
+	else {
+		OUT_PUT_BYTE((byte)(0xF0 | ((u >> 18) & 0x07)));
+		OUT_PUT_BYTE((byte)(0x80 | ((u >> 12) & 0x3F)));
+		OUT_PUT_BYTE((byte)(0x80 | ((u >> 6)  & 0x3F)));
+		OUT_PUT_BYTE((byte)(0x80 | (u         & 0x3F)));
+	}
 }
 
 #define STRING_ERROR(ret) do { c->top = head; return ret; } while(0)
@@ -116,23 +157,38 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
                 c->json = p;
                 return LEPT_PARSE_OK;
             case '\\':
-                switch (*p++) {
-                    case '\"': PUTC(c, '\"'); break;
-                    case '\\': PUTC(c, '\\'); break;
-                    case '/':  PUTC(c, '/' ); break;
-                    case 'b':  PUTC(c, '\b'); break;
-                    case 'f':  PUTC(c, '\f'); break;
-                    case 'n':  PUTC(c, '\n'); break;
-                    case 'r':  PUTC(c, '\r'); break;
-                    case 't':  PUTC(c, '\t'); break;
-                    case 'u':
-                        if (!(p = lept_parse_hex4(p, &u)))
-                            STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_HEX);
-                        /* \TODO surrogate handling */
-                        lept_encode_utf8(c, u);
-                        break;
-                    default:
-                        STRING_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE);
+				switch (*p++) {
+				case '\"': PUTC(c, '\"'); break;
+				case '\\': PUTC(c, '\\'); break;
+				case '/':  PUTC(c, '/'); break;
+				case 'b':  PUTC(c, '\b'); break;
+				case 'f':  PUTC(c, '\f'); break;
+				case 'n':  PUTC(c, '\n'); break;
+				case 'r':  PUTC(c, '\r'); break;
+				case 't':  PUTC(c, '\t'); break;
+				case 'u':
+					if (!(p = lept_parse_hex4(p, &u)))
+						STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_HEX);
+					/* \TODO surrogate handling */
+					if (u >= 0xD800 && u <= 0xDBFF){
+						if ('\\' == *p++ && 'u' == *p++) {
+							unsigned l;
+							if (!(p = lept_parse_hex4(p, &l)))
+								STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_HEX);
+							if (!(l > 0xDC00 && l < 0xDFFF))
+								return LEPT_PARSE_INVALID_UNICODE_SURROGATE;
+
+							u = 0x10000 + (u - 0xD800) * 0x400 + (l - 0xDC00);
+						}
+						else STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
+					}
+					else if (u >= 0xDC00 && u <= 0xDFFF)
+						STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
+                    
+					lept_encode_utf8(c, u);
+                    break;
+                default:
+                    STRING_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE);
                 }
                 break;
             case '\0':

@@ -86,6 +86,12 @@ static int lept_parse_number(lept_context* c, lept_value* v) {
     return LEPT_PARSE_OK;
 }
 
+#define DO_ESCAPE(ch)\
+	do {\
+		PUTC(c, ch);\
+		break;\
+	} while (0)
+
 static int lept_parse_string(lept_context* c, lept_value* v) {
     size_t head = c->top, len;
     const char* p;
@@ -94,14 +100,116 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
     for (;;) {
         char ch = *p++;
         switch (ch) {
+			case '\x01':
+			case '\x02':
+			case '\x03':
+			case '\x04':
+			case '\x05':
+			case '\x06':
+			case '\x07':
+			case '\x08':
+			case '\x09':
+			case '\x0a':
+			case '\x0b':
+			case '\x0c':
+			case '\x0d':
+			case '\x0e':
+			case '\x0f':
+			case '\x10':
+			case '\x11':
+			case '\x12':
+			case '\x13':
+			case '\x14':
+			case '\x15':
+			case '\x16':
+			case '\x17':
+			case '\x18':
+			case '\x19':
+			case '\x1a':
+			case '\x1b':
+			case '\x1c':
+			case '\x1d':
+			case '\x1e':
+			case '\x1f':
+				c->top = head;
+				return LEPT_PARSE_INVALID_STRING_CHAR;
             case '\"':
                 len = c->top - head;
-                lept_set_string(v, (const char*)lept_context_pop(c, len), len);
+                lept_set_string(v, lept_context_pop(c, len), len);
                 c->json = p;
                 return LEPT_PARSE_OK;
             case '\0':
                 c->top = head;
                 return LEPT_PARSE_MISS_QUOTATION_MARK;
+			case '\\':
+				ch = *p++;//跳过转义符
+				switch (ch) {
+					case '\\':
+						ch = '\\';
+						PUTC(c, ch);
+						break;
+					case '\"':
+						ch = '\"';
+						PUTC(c, ch);
+						break;
+					case 0x2F: // '/'
+						ch = '/';
+						PUTC(c, ch);
+						break;
+					case 0x62: // b
+						ch = '\b';
+						PUTC(c, ch);
+						break;
+					case 0x66: // f
+						ch = '\f';
+						PUTC(c, ch);
+						break;
+					case 0x6E: // n
+						ch = '\n';
+						PUTC(c, ch);
+						break;
+					case 0x72: // r
+						ch = '\r';
+						PUTC(c, ch);
+						break;
+					case 0x74: // t
+						ch = '\t';
+						PUTC(c, ch);
+						break;
+					case 'x': //16进制表示的字符
+						//lept_parse_hexchar_represented_by_string();
+						{
+						char* char_hex_char = "\\x\0\0\0\0\0\0\0";
+						ch = *p++;
+						size_t len = 2;
+						while (len <= 8 && ((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'))) {
+							char_hex_char[len] = ch;
+							ch = *p++;
+							len++;
+						};
+							p--;//恢复
+							if (len < 4) {
+								return LEPT_PARSE_INVALID_STRING_ESCAPE;
+								break;
+							}
+							else if (len = 4) {
+								if (strcmp(char_hex_char, "\\x20") < 0 || strcmp(char_hex_char, "\\x5B") > 0 || strcmp(char_hex_char, "\\x22") == 0) {
+									return LEPT_PARSE_INVALID_STRING_ESCAPE;
+									break;
+								}
+							}
+							size_t i = 0;
+							for (i; i < len; i++) {
+								ch = char_hex_char[i];
+								PUTC(c, ch); //把用字符串视觉表示的16进制编码原样存放
+							}
+						}
+						break;
+					default:
+						return LEPT_PARSE_INVALID_STRING_ESCAPE;
+						break;//return后还需要braek吗？
+				}
+				break;//这里得break，不然会放两次PUTC
             default:
                 PUTC(c, ch);
         }
@@ -153,12 +261,15 @@ lept_type lept_get_type(const lept_value* v) {
 }
 
 int lept_get_boolean(const lept_value* v) {
-    /* \TODO */
-    return 0;
+	assert(v != NULL && (v->type == LEPT_FALSE || v->type == LEPT_TRUE));
+    //return v->type - 1;//哈哈哈哈
+	return (int)v->u.n;
 }
 
 void lept_set_boolean(lept_value* v, int b) {
-    /* \TODO */
+	lept_free(v);
+	v->u.n = b;
+	v->type = (b == 0) ? LEPT_FALSE : LEPT_TRUE;
 }
 
 double lept_get_number(const lept_value* v) {
@@ -167,7 +278,9 @@ double lept_get_number(const lept_value* v) {
 }
 
 void lept_set_number(lept_value* v, double n) {
-    /* \TODO */
+	lept_free(v);
+	(*v).type = LEPT_NUMBER;
+	(*v).u.n = n;
 }
 
 const char* lept_get_string(const lept_value* v) {
