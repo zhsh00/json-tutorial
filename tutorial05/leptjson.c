@@ -187,6 +187,7 @@ static int lept_parse_array(lept_context* c, lept_value* v) {
     size_t size = 0;
     int ret;
     EXPECT(c, '[');
+	lept_parse_whitespace(c);//空白
     if (*c->json == ']') {
         c->json++;
         v->type = LEPT_ARRAY;
@@ -197,22 +198,32 @@ static int lept_parse_array(lept_context* c, lept_value* v) {
     for (;;) {
         lept_value e;
         lept_init(&e);
-        if ((ret = lept_parse_value(c, &e)) != LEPT_PARSE_OK)
-            return ret;
+		lept_parse_whitespace(c);//空白
+		if ((ret = lept_parse_value(c, &e)) != LEPT_PARSE_OK) {
+			size *= sizeof(lept_value);
+			lept_context_pop(c, size); //老是报Assertion failed
+			return ret;
+		}
         memcpy(lept_context_push(c, sizeof(lept_value)), &e, sizeof(lept_value));
         size++;
+		lept_parse_whitespace(c);//空白
         if (*c->json == ',')
             c->json++;
         else if (*c->json == ']') {
             c->json++;
+			//释放内存
+			// lept_free(v);//这个应该完全不需要啊，并不存在覆盖的情况啊
             v->type = LEPT_ARRAY;
             v->u.a.size = size;
-            size *= sizeof(lept_value);
-            memcpy(v->u.a.e = (lept_value*)malloc(size), lept_context_pop(c, size), size);
+			size *= sizeof(lept_value);
+			memcpy(v->u.a.e = (lept_value*)malloc(size), lept_context_pop(c, size), size);
             return LEPT_PARSE_OK;
         }
-        else
-            return LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET;
+		else {
+			size *= sizeof(lept_value);
+			lept_context_pop(c, size); //老是报Assertion failed
+			return LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET;
+		}
     }
 }
 
@@ -250,9 +261,17 @@ int lept_parse(lept_value* v, const char* json) {
 }
 
 void lept_free(lept_value* v) {
-    assert(v != NULL);
-    if (v->type == LEPT_STRING)
-        free(v->u.s.s);
+	assert(v != NULL);
+	//if (v->type == LEPT_STRING)
+	//    free(v->u.s.s);
+	switch (v->type) {
+		case LEPT_STRING:
+			free(v->u.a.e);
+			break;
+		case LEPT_ARRAY:
+			free(v->u.s.s);
+			break;
+	}
     v->type = LEPT_NULL;
 }
 

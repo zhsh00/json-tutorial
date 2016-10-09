@@ -127,14 +127,52 @@ static void test_parse_string() {
     TEST_STRING("\xF0\x9D\x84\x9E", "\"\\ud834\\udd1e\"");  /* G clef sign U+1D11E */
 }
 
+#define TEST_GET_ARRAY_ELEMENT_ARRAY_NODEEP(v, index, size) \
+	e = *lept_get_array_element(&v, index); \
+	EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(&e)); \
+	EXPECT_EQ_SIZE_T(size, lept_get_array_size(&e))
+
 static void test_parse_array() {
-    lept_value v;
+    lept_value v, e;
+	size_t i;
 
     lept_init(&v);
     EXPECT_EQ_INT(LEPT_PARSE_OK, lept_parse(&v, "[ ]"));
     EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(&v));
     EXPECT_EQ_SIZE_T(0, lept_get_array_size(&v));
     lept_free(&v);
+
+	lept_init(&v);
+	EXPECT_EQ_INT(LEPT_PARSE_OK, lept_parse(&v, "[ null , false , true , 123 , \"abc\" ]"));
+	EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(&v));
+	EXPECT_EQ_SIZE_T(5, lept_get_array_size(&v));
+
+	e = *lept_get_array_element(&v, 0);
+	EXPECT_EQ_INT(LEPT_NULL, lept_get_type(&e));
+	e = *lept_get_array_element(&v, 1);
+	EXPECT_EQ_INT(LEPT_FALSE, lept_get_type(&e));
+	EXPECT_FALSE(lept_get_boolean(&e));//应该不必要的
+	e = *lept_get_array_element(&v, 2);
+	EXPECT_EQ_INT(LEPT_TRUE, lept_get_type(&e));
+	EXPECT_TRUE(lept_get_boolean(&e));//应该不必要的
+	e = *lept_get_array_element(&v, 3);
+	EXPECT_EQ_INT(LEPT_NUMBER, lept_get_type(&e));
+	EXPECT_EQ_DOUBLE(123, lept_get_number(&e));
+	e = *lept_get_array_element(&v, 4);
+	EXPECT_EQ_INT(LEPT_STRING, lept_get_type(&e));
+	EXPECT_EQ_STRING("abc", lept_get_string(&e), lept_get_string_length(&e));
+	lept_free(&v);
+
+	lept_init(&v);
+	EXPECT_EQ_INT(LEPT_PARSE_OK, lept_parse(&v, " [ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]"));
+	EXPECT_EQ_INT(LEPT_ARRAY, lept_get_type(&v));
+	EXPECT_EQ_SIZE_T(4, lept_get_array_size(&v));
+
+	TEST_GET_ARRAY_ELEMENT_ARRAY_NODEEP(v, 0, 0);
+	TEST_GET_ARRAY_ELEMENT_ARRAY_NODEEP(v, 1, 1);
+	TEST_GET_ARRAY_ELEMENT_ARRAY_NODEEP(v, 2, 2);
+	TEST_GET_ARRAY_ELEMENT_ARRAY_NODEEP(v, 3, 3);
+	lept_free(&v);
 }
 
 #define TEST_ERROR(error, json)\
@@ -167,7 +205,7 @@ static void test_parse_invalid_value() {
     TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "nan");
 
     /* invalid value in array */
-#if 0
+#if 1
     TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "[1,]");
     TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "[\"a\", nul]");
 #endif
@@ -229,7 +267,7 @@ static void test_parse_invalid_unicode_surrogate() {
 }
 
 static void test_parse_miss_comma_or_square_bracket() {
-#if 0
+#if 1
     TEST_ERROR(LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1");
     TEST_ERROR(LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1}");
     TEST_ERROR(LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1 2");
